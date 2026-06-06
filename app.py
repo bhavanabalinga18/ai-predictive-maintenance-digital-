@@ -1,80 +1,160 @@
-from flask import Flask, render_template, request, jsonify
+import streamlit as st
 import pandas as pd
 import numpy as np
-import pickle
+from sklearn.ensemble import RandomForestClassifier
+import plotly.express as px
 
-app = Flask(__name__)
+# -------------------------
+# PAGE CONFIG
+# -------------------------
+st.set_page_config(
+    page_title="AI Predictive Maintenance",
+    page_icon="🔧",
+    layout="wide"
+)
 
-# Load trained model
-with open('failure_prediction_model.pkl', 'rb') as file:
-    model = pickle.load(file)
+# -------------------------
+# TITLE
+# -------------------------
+st.title("🔧 AI Predictive Maintenance Digital Twin")
+st.markdown("Industry 4.0 Smart Maintenance Dashboard")
 
-# Load dataset
-data = pd.read_csv('industrial_drilling_dataset.csv')
+# -------------------------
+# LOAD DATA
+# -------------------------
+try:
+    df = pd.read_csv("industrial_drilling_dataset.csv")
+    st.success("Dataset Loaded Successfully")
+except Exception as e:
+    st.error(f"Dataset Error: {e}")
+    st.stop()
 
+# -------------------------
+# SHOW DATA
+# -------------------------
+with st.expander("View Dataset"):
+    st.dataframe(df.head())
 
-@app.route('/')
-def home():
-    return render_template('index.html')
+# -------------------------
+# COLUMN CHECK
+# -------------------------
+st.subheader("Dataset Columns")
 
+st.write(df.columns.tolist())
 
-@app.route('/get_latest_data')
-def get_latest_data():
+# Replace these names if your CSV uses different columns
+feature_columns = df.columns[:4]
 
-    latest = data.iloc[-1]
+# Last column assumed target
+target_column = df.columns[-1]
 
-    response = {
-        "temperature": float(latest["Temperature"]),
-        "vibration": float(latest["Vibration"]),
-        "rpm": float(latest["RPM"]),
-        "tool_wear": float(latest["Tool_Wear"])
-    }
+# -------------------------
+# TRAIN MODEL
+# -------------------------
+try:
+    X = df[feature_columns]
+    y = df[target_column]
 
-    return jsonify(response)
+    model = RandomForestClassifier(
+        n_estimators=100,
+        random_state=42
+    )
 
+    model.fit(X, y)
 
-@app.route('/predict', methods=['POST'])
-def predict():
+except Exception as e:
+    st.error(f"Model Training Error: {e}")
+    st.stop()
 
-    input_data = request.json
+# -------------------------
+# SIDEBAR
+# -------------------------
+st.sidebar.header("Machine Inputs")
 
-    features = np.array([
-        [
-            float(input_data['temperature']),
-            float(input_data['vibration']),
-            float(input_data['rpm']),
-            float(input_data['tool_wear'])
-        ]
+temperature = st.sidebar.slider(
+    "Temperature",
+    0.0,
+    200.0,
+    50.0
+)
+
+vibration = st.sidebar.slider(
+    "Vibration",
+    0.0,
+    20.0,
+    2.0
+)
+
+rpm = st.sidebar.slider(
+    "RPM",
+    0.0,
+    10000.0,
+    2000.0
+)
+
+tool_wear = st.sidebar.slider(
+    "Tool Wear",
+    0.0,
+    100.0,
+    10.0
+)
+
+# -------------------------
+# KPI CARDS
+# -------------------------
+col1, col2, col3, col4 = st.columns(4)
+
+col1.metric("Temperature", f"{temperature:.1f} °C")
+col2.metric("Vibration", f"{vibration:.2f}")
+col3.metric("RPM", f"{rpm:.0f}")
+col4.metric("Tool Wear", f"{tool_wear:.0f}%")
+
+# -------------------------
+# PREDICTION
+# -------------------------
+if st.button("Predict Failure"):
+
+    input_data = np.array([
+        [temperature, vibration, rpm, tool_wear]
     ])
 
-    prediction = model.predict(features)[0]
+    prediction = model.predict(input_data)[0]
 
     if prediction == 1:
-        status = "Failure Predicted"
+        st.error("⚠ Failure Predicted")
     else:
-        status = "Machine Healthy"
+        st.success("✅ Machine Healthy")
 
-    return jsonify({
-        "prediction": int(prediction),
-        "status": status
-    })
+# -------------------------
+# CHART
+# -------------------------
+st.subheader("Sensor Trend")
 
+chart_col = feature_columns[0]
 
-@app.route('/future_prediction')
-def future_prediction():
+fig = px.line(
+    df,
+    y=chart_col,
+    title=f"{chart_col} Trend"
+)
 
-    latest = data.iloc[-1]
+st.plotly_chart(
+    fig,
+    use_container_width=True
+)
 
-    future_temp = round(float(latest["Temperature"]) + np.random.uniform(-2, 3), 2)
-    future_vibration = round(float(latest["Vibration"]) + np.random.uniform(-0.5, 0.5), 2)
-    future_rpm = round(float(latest["RPM"]) + np.random.uniform(-50, 50), 2)
+# -------------------------
+# DIGITAL TWIN STATUS
+# -------------------------
+st.subheader("Digital Twin Status")
 
-    return jsonify({
-        "future_temperature": future_temp,
-        "future_vibration": future_vibration,
-        "future_rpm": future_rpm
-    })
+health_score = max(
+    0,
+    100 - tool_wear
+)
 
+st.progress(int(health_score))
 
-if __name__ == '__main__':
-    app.run(debug=True)
+st.write(
+    f"Machine Health Score: {health_score:.0f}%"
+)
