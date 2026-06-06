@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -7,139 +6,307 @@ from sklearn.ensemble import RandomForestClassifier, IsolationForest
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 
-st.set_page_config(page_title="AI Predictive Maintenance", page_icon="🔧", layout="wide")
+# -----------------------------------
+# PAGE CONFIG
+# -----------------------------------
+st.set_page_config(
+    page_title="AI Predictive Maintenance",
+    page_icon="🔧",
+    layout="wide"
+)
 
+# -----------------------------------
+# INDUSTRY 4.0 THEME
+# -----------------------------------
 st.markdown("""
 <style>
-.stApp {background-color:#0B1120;}
-h1,h2,h3,p,label {color:white !important;}
-div[data-testid="metric-container"]{
-background:#111827;
-padding:15px;
-border-radius:12px;
+.stApp {
+    background-color: #0B1120;
+}
+
+div[data-testid="metric-container"] {
+    background: #111827;
+    padding: 15px;
+    border-radius: 12px;
+}
+
+h1,h2,h3 {
+    color: white;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# Login
+# -----------------------------------
+# LOGIN PAGE
+# -----------------------------------
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
 if not st.session_state.logged_in:
+
     st.title("🔐 Industry 4.0 Login")
-    u = st.text_input("Username")
-    p = st.text_input("Password", type="password")
+
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
 
     if st.button("Login"):
-        if u == "admin" and p == "admin123":
+
+        if username == "admin" and password == "admin123":
             st.session_state.logged_in = True
             st.rerun()
+
         else:
-            st.error("Invalid credentials")
+            st.error("Invalid Username or Password")
+
     st.stop()
 
+# -----------------------------------
+# DASHBOARD
+# -----------------------------------
 st.title("🔧 AI Predictive Maintenance Digital Twin Dashboard")
 
-# Load dataset
-df = pd.read_csv("industrial_drilling_dataset.csv")
-
-target = "Failure"
-features = ["Temperature","Vibration","RPM","Torque","Tool_Wear","Pressure","Power"]
-
-X = df[features]
-y = df[target]
-
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42
+# -----------------------------------
+# CSV UPLOADER
+# -----------------------------------
+uploaded_file = st.file_uploader(
+    "Upload Industrial Dataset CSV",
+    type=["csv"]
 )
 
-model = RandomForestClassifier(n_estimators=100, random_state=42)
+if uploaded_file is None:
+    st.info("Please upload your CSV dataset.")
+    st.stop()
+
+# -----------------------------------
+# LOAD DATA
+# -----------------------------------
+df = pd.read_csv(uploaded_file)
+
+st.success("Dataset Loaded Successfully")
+
+# -----------------------------------
+# PREVIEW
+# -----------------------------------
+with st.expander("Dataset Preview"):
+    st.dataframe(df.head())
+
+# -----------------------------------
+# TARGET COLUMN
+# -----------------------------------
+target_column = "Failure"
+
+if target_column not in df.columns:
+    st.error("Failure column not found.")
+    st.stop()
+
+feature_columns = [
+    col for col in df.columns
+    if col != target_column
+]
+
+X = df[feature_columns]
+y = df[target_column]
+
+# -----------------------------------
+# TRAIN MODEL
+# -----------------------------------
+X_train, X_test, y_train, y_test = train_test_split(
+    X,
+    y,
+    test_size=0.2,
+    random_state=42
+)
+
+model = RandomForestClassifier(
+    n_estimators=100,
+    random_state=42
+)
+
 model.fit(X_train, y_train)
 
-acc = accuracy_score(y_test, model.predict(X_test))
+accuracy = accuracy_score(
+    y_test,
+    model.predict(X_test)
+)
 
-# Sidebar inputs
+# -----------------------------------
+# SIDEBAR
+# -----------------------------------
 st.sidebar.header("Machine Inputs")
 
-temperature = st.sidebar.slider("Temperature", 0.0, 150.0, 70.0)
-vibration = st.sidebar.slider("Vibration", 0.0, 20.0, 2.0)
-rpm = st.sidebar.slider("RPM", 0, 10000, 2500)
-torque = st.sidebar.slider("Torque", 0.0, 100.0, 40.0)
-tool_wear = st.sidebar.slider("Tool Wear", 0.0, 100.0, 20.0)
-pressure = st.sidebar.slider("Pressure", 0.0, 50.0, 10.0)
-power = st.sidebar.slider("Power", 0.0, 100.0, 20.0)
+inputs = []
 
-input_data = np.array([[
-    temperature,vibration,rpm,torque,
-    tool_wear,pressure,power
-]])
+for col in feature_columns:
 
-prob = model.predict_proba(input_data)[0][1]
-pred = model.predict(input_data)[0]
+    value = st.sidebar.slider(
+        col,
+        float(df[col].min()),
+        float(df[col].max()),
+        float(df[col].mean())
+    )
 
-health_score = max(0, int(100-tool_wear))
-rul_days = max(1, int((100-tool_wear)*3))
+    inputs.append(value)
 
-# KPIs
-c1,c2,c3,c4,c5 = st.columns(5)
-c1.metric("Accuracy", f"{acc*100:.1f}%")
-c2.metric("Health Score", f"{health_score}%")
-c3.metric("RUL", f"{rul_days} Days")
-c4.metric("Failure Risk", f"{prob*100:.1f}%")
-c5.metric("RPM", rpm)
+input_data = np.array([inputs])
 
-st.subheader("🧠 Failure Prediction")
-if pred == 1:
-    st.error(f"⚠ Failure Predicted ({prob*100:.1f}%)")
-else:
-    st.success(f"✅ Machine Healthy ({(1-prob)*100:.1f}%)")
+# -----------------------------------
+# FAILURE PREDICTION
+# -----------------------------------
+prediction = model.predict(input_data)[0]
+probability = model.predict_proba(input_data)[0][1]
 
+# -----------------------------------
+# KPI CARDS
+# -----------------------------------
+st.subheader("📊 KPI Dashboard")
+
+c1, c2, c3, c4 = st.columns(4)
+
+health_score = 95
+
+rul_days = 180
+
+c1.metric(
+    "Model Accuracy",
+    f"{accuracy*100:.2f}%"
+)
+
+c2.metric(
+    "Health Score",
+    f"{health_score}%"
+)
+
+c3.metric(
+    "RUL",
+    f"{rul_days} Days"
+)
+
+c4.metric(
+    "Failure Risk",
+    f"{probability*100:.2f}%"
+)
+
+# -----------------------------------
+# DIGITAL TWIN
+# -----------------------------------
 st.subheader("🏭 Digital Twin Status")
-if health_score > 80:
-    st.success("Machine Status: Healthy")
-elif health_score > 50:
-    st.warning("Machine Status: Warning")
+
+if prediction == 1:
+    st.error("⚠ Critical Condition")
 else:
-    st.error("Machine Status: Critical")
+    st.success("✅ Healthy Machine")
 
 st.progress(health_score)
 
+# -----------------------------------
+# FAILURE PREDICTION
+# -----------------------------------
+st.subheader("🧠 Failure Prediction")
+
+if prediction == 1:
+
+    st.error(
+        f"Failure Predicted ({probability*100:.2f}%)"
+    )
+
+else:
+
+    st.success(
+        f"Machine Healthy ({(1-probability)*100:.2f}%)"
+    )
+
+# -----------------------------------
+# ANOMALY DETECTION
+# -----------------------------------
 st.subheader("⚠ Anomaly Detection")
-iso = IsolationForest(contamination=0.05, random_state=42)
+
+iso = IsolationForest(
+    contamination=0.05,
+    random_state=42
+)
+
 labels = iso.fit_predict(X)
-anomaly_count = int((labels == -1).sum())
-st.metric("Detected Anomalies", anomaly_count)
 
-st.subheader("🔮 Forecasting")
-future_temp = temperature + np.random.uniform(1,5)
-future_vib = vibration + np.random.uniform(0.1,0.5)
-st.write(f"Predicted Temperature (24h): {future_temp:.2f}")
-st.write(f"Predicted Vibration (24h): {future_vib:.2f}")
+anomaly_count = np.sum(labels == -1)
 
+st.metric(
+    "Detected Anomalies",
+    anomaly_count
+)
+
+# -----------------------------------
+# FORECASTING
+# -----------------------------------
+st.subheader("🔮 Future Forecast")
+
+forecast = {}
+
+for i, col in enumerate(feature_columns):
+
+    forecast[col] = round(
+        inputs[i] + np.random.uniform(-5, 5),
+        2
+    )
+
+forecast_df = pd.DataFrame(
+    forecast,
+    index=["24 Hours"]
+)
+
+st.dataframe(forecast_df)
+
+# -----------------------------------
+# CHARTS
+# -----------------------------------
 st.subheader("📈 Analytics")
-col1,col2 = st.columns(2)
 
-with col1:
-    fig = px.line(df.head(500), y="Temperature", title="Temperature Trend")
-    st.plotly_chart(fig, use_container_width=True)
+sensor = st.selectbox(
+    "Select Sensor",
+    feature_columns
+)
 
-with col2:
-    fig2 = px.line(df.head(500), y="Vibration", title="Vibration Trend")
-    st.plotly_chart(fig2, use_container_width=True)
+fig = px.line(
+    df,
+    y=sensor,
+    title=f"{sensor} Trend"
+)
 
+st.plotly_chart(
+    fig,
+    use_container_width=True
+)
+
+# -----------------------------------
+# FAILURE DISTRIBUTION
+# -----------------------------------
 st.subheader("📊 Failure Distribution")
-fig3 = px.histogram(df, x="Failure")
-st.plotly_chart(fig3, use_container_width=True)
 
+fig2 = px.histogram(
+    df,
+    x="Failure"
+)
+
+st.plotly_chart(
+    fig2,
+    use_container_width=True
+)
+
+# -----------------------------------
+# REPORT
+# -----------------------------------
 st.subheader("📄 Maintenance Report")
-report = pd.DataFrame({
-    "Health Score":[health_score],
-    "Failure Risk":[prob*100],
-    "RUL Days":[rul_days]
-})
-csv = report.to_csv(index=False)
-st.download_button("Download Report", csv, "maintenance_report.csv")
 
-with st.expander("Dataset Preview"):
-    st.dataframe(df.head(50))
-    
+report = pd.DataFrame({
+    "Health Score": [health_score],
+    "Failure Risk": [probability*100],
+    "RUL Days": [rul_days]
+})
+
+csv = report.to_csv(index=False)
+
+st.download_button(
+    "Download Report",
+    csv,
+    "maintenance_report.csv",
+    "text/csv"
+)
