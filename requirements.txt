@@ -3,6 +3,5 @@ pandas
 numpy
 plotly
 scikit-learn
-streamlit-option-menu
 scipy
 joblib
